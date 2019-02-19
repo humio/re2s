@@ -53,10 +53,6 @@ class RE2 private extends Serializable {
   var prefixComplete: Boolean = _ // true iff prefix is the entire regexp
   var prefixRune: Int         = _ // first rune in prefix
 
-  // Cache of machines for running regexp.
-  // Accesses must be serialized using |this| monitor.
-  private val machine = new ArrayList[Machine]()
-
   // This is visible for testing.
   def this(expr: String) {
     this()
@@ -101,28 +97,7 @@ class RE2 private extends Serializable {
   def findNamedCapturingGroups(name: String): Int =
     namedCaps.getOrElse(name, -1)
 
-  // get() returns a machine to use for matching |this|.  It uses |this|'s
-  // machine cache if possible, to avoid unnecessary allocation.
-  def get(): Machine = synchronized {
-    val n = machine.size()
-    if (n > 0) {
-      return machine.remove(n - 1)
-    }
-    return new Machine(this)
-  }
-
-  // Clears the memory associated with this machine.
-  def reset(): Unit = synchronized {
-    machine.clear()
-  }
-
-  // put() returns a machine to |this|'s machine cache.  There is no attempt to
-  // limit the size of the cache, so it will grow to the maximum number of
-  // simultaneous matches run using |this|.  (The cache empties when |this|
-  // gets garbage collected.)
-  def put(m: Machine): Unit = synchronized {
-    machine.add(m)
-  }
+  def reset() : Unit = ()
 
   override def toString: String = expr
 
@@ -132,19 +107,18 @@ class RE2 private extends Serializable {
   private def doExecute(in: MachineInput,
                         pos: Int,
                         anchor: Int,
-                        ncap: Int): Array[Int] = {
-    val m = get()
+                        ncap: Int,
+                        m : Machine = new Machine(this)): Array[Int] = {
     m.init(ncap)
     val cap = if (m.match_(in, pos, anchor)) m.submatches() else null
-    put(m)
     cap
   }
 
   /**
    * Returns true iff this regexp matches the string {@code s}.
    */
-  def match_(s: CharSequence): Boolean =
-    doExecute(MachineInput.fromUTF16(s), 0, UNANCHORED, 0) != null
+  def match_(s: CharSequence, m: Machine): Boolean =
+    doExecute(MachineInput.fromUTF16(s), 0, UNANCHORED, 0, m) != null
 
   /**
    * Matches the regular expression against input starting at position start
@@ -167,7 +141,8 @@ class RE2 private extends Serializable {
              end: Int,
              anchor: Int,
              group: Array[Int],
-             ngroup: Int): Boolean = {
+             ngroup: Int,
+             m : Machine = new Machine(this)): Boolean = {
     if (start > end) {
       return false
     }
@@ -175,7 +150,8 @@ class RE2 private extends Serializable {
     val groupMatch = doExecute(MachineInput.fromUTF16(input, 0, end),
                                start,
                                anchor,
-                               2 * ngroup)
+                               2 * ngroup,
+                               m)
 
     if (groupMatch == null) {
       return false
@@ -826,8 +802,11 @@ object RE2 {
    * full {@code RE2} interface.
    */
   // This is visible for testing.
-  def match_(pattern: String, s: CharSequence) =
-    compile(pattern).match_(s)
+  def match_(pattern: String, s: CharSequence) = {
+    val re2 = compile(pattern)
+    re2.match_(s, new Machine(re2))
+  }
+
 
   // This is visible for testing.
   trait ReplaceFunc {

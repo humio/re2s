@@ -8,7 +8,7 @@ class RE2MatchSuite() extends FunSuite {
   test("Match") {
     for (test <- FIND_TESTS) {
       val re = RE2.compile(test.pat)
-      var m  = re.match_(test.text)
+      var m  = re.match_(test.text, new Machine(re))
       if (m != (test.matches.length > 0))
         fail(
           "RE2.match failure on %s: %s should be %s"

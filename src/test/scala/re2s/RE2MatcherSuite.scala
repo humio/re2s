@@ -220,9 +220,10 @@ class RE2MatcherSuite() extends FunSuite {
                           e: Int,
                           anchor: Int,
                           group: Array[Int],
-                          ngroup: Int): Boolean = {
+                          ngroup: Int,
+                          m: Machine): Boolean = {
         assert(end == e)
-        super.match_(input, start, e, anchor, group, ngroup)
+        super.match_(input, start, e, anchor, group, ngroup, m)
       }
     }
     val pat   = new Pattern(pattern, 0, re)

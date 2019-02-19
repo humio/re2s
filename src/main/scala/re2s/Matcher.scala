@@ -2,6 +2,8 @@
 
 package re2s
 
+import java.util.ArrayList
+
 /**
  * A stateful iterator that interprets a regex {@code Pattern} on a
  * specific input.  Its interface mimics the JDK 1.4.2
@@ -59,6 +61,28 @@ final class Matcher private (private val _pattern: Pattern) {
 
   // The anchor flag to use when repeating the match to find subgroups.
   private var _anchorFlag: Int = _
+
+  // Cache of machines for running regexp.
+  // Accesses must be serialized using |this| monitor.
+  private val _machine = new ArrayList[Machine](1)
+
+  // getMachine() returns a machine to use for matching |this|.  It uses |this|'s
+  // machine cache if possible, to avoid unnecessary allocation.
+  private def getMachine(): Machine = {
+    val n = _machine.size()
+    if (n > 0) {
+      return _machine.remove(n - 1)
+    }
+    return new Machine(_pattern.re2)
+  }
+
+  // putMachine() returns a machine to |this|'s machine cache.  There is no attempt to
+  // limit the size of the cache, so it will grow to the maximum number of
+  // simultaneous matches run using |this|.  (The cache empties when |this|
+  // gets garbage collected.)
+  private def putMachine(m: Machine): Unit = {
+    _machine.add(m)
+  }
 
   /** Creates a new {@code Matcher} with the given pattern and input. */
   def this(pattern: Pattern, input: CharSequence) = {
@@ -207,12 +231,15 @@ final class Matcher private (private val _pattern: Pattern) {
       end = _inputLength
     }
 
+    val m = getMachine();
     val ok = _pattern.re2.match_(_inputSequence,
                                  _groups(0),
                                  end,
                                  _anchorFlag,
                                  _groups,
-                                 1 + _groupCount)
+                                 1 + _groupCount,
+                                 m)
+    putMachine(m);
     // Must match - hasMatch says that the last call with these
     // parameters worked just fine.
     if (!ok) {
@@ -276,12 +303,15 @@ final class Matcher private (private val _pattern: Pattern) {
 
   /** Helper: does match starting at start, with RE2 anchor flag. */
   private def genMatch(startByte: Int, anchor: Int): Boolean = {
+    val m = getMachine()
     val ok = _pattern.re2.match_(_inputSequence,
                                  startByte,
                                  _inputLength,
                                  anchor,
                                  _groups,
-                                 1)
+      1,
+      m)
+    putMachine(m);
     if (!ok) {
       false
     } else {

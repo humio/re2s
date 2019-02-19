@@ -205,7 +205,7 @@ class ExecTest() extends FunSuite {
             break
           }
           regexp.longest = longest
-          val b = regexp.match_(text)
+          val b = regexp.match_(text, new Machine(regexp))
           if (b != (want != null)) {
             System.err.println(
               "%s:%d: %s[partial=%b,longest=%b].match(%s) = %b, want %b\n"
@@ -521,7 +521,7 @@ class ExecTest() extends FunSuite {
             nerr += 1
             break
           }
-          val match0 = re.match_(text)
+          val match0 = re.match_(text, new Machine(re))
           if (match0 != shouldCompileMatch(1)) {
             System.err.println(
               "%s:%d: %s.match(%s) = %s, want %s\n"

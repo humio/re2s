@@ -10,8 +10,8 @@ package re2s
 import java.util.ArrayList
 import java.util.Arrays
 import java.util.List
-import scala.util.control.Breaks._
 
+import scala.util.control.Breaks._
 import Inst.{Op => IOP}
 
 // A Machine matches an input string of Unicode characters against an
@@ -39,14 +39,22 @@ class Machine(re2: RE2) {
   private var matchcap =
     new Array[Int](if (prog.numCap < 2) 2 else prog.numCap)
 
+  private def initArray(cap: Array[Int], ncap:Int) : Array[Int] = {
+    if (ncap == cap.length) {
+      var j = 0;
+      while (j < ncap) {
+        cap(j) = 0
+        j += 1
+      }
+      cap
+    } else {
+      makeArray(ncap)
+    }
+  }
+
   // init() reinitializes an existing Machine for re-use on a new input.
   def init(ncap: Int): Unit = {
-    val iter = pool.iterator()
-    while (iter.hasNext()) {
-      val t = iter.next()
-      t.cap = new Array[Int](ncap)
-    }
-    this.matchcap = new Array[Int](ncap)
+    this.matchcap = initArray(this.matchcap, ncap)
   }
 
   def submatches(): Array[Int] = {
@@ -62,7 +70,13 @@ class Machine(re2: RE2) {
   // It uses the free pool if possible.
   private def alloc(inst: Inst): Thread = {
     val n = pool.size()
-    val t = if (n > 0) pool.remove(n - 1) else new Thread(matchcap.length)
+    val t = if (n > 0) {
+      val tt = pool.remove(n - 1)
+      tt.cap = initArray(tt.cap, matchcap.length)
+      tt
+    } else {
+      new Thread(matchcap.length)
+    }
     t.inst = inst
     t
   }
@@ -323,9 +337,14 @@ class Machine(re2: RE2) {
 
 object Machine {
 
+  def makeArray(n: Int) = {
+    if (n == 0) { Utils.EMPTY_INTS }
+    else { new Array[Int](n) }
+  }
+
   // A logical thread in the NFA.
   private class Thread(n: Int) {
-    var cap: Array[Int] = new Array[Int](n)
+    var cap: Array[Int] = makeArray(n: Int)
     var inst: Inst      = _
   }
 
@@ -333,7 +352,7 @@ object Machine {
   // research.swtch.com/2008/03/using-uninitialized-memory-for-fun-and.html
   private class Queue(n: Int) {
     val dense: Array[Entry] = new Array[Entry](n) // may contain stale Entries in slots >= size
-    val sparse: Array[Int]  = new Array[Int](n) // may contain stale but in-bounds values.
+    val sparse: Array[Int]  = makeArray(n: Int) // may contain stale but in-bounds values.
     var size: Int           = _ // of prefix of |dense| that is logically populated
 
     def contains(pc: Int): Boolean = {
